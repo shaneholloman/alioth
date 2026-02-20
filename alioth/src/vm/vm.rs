@@ -27,7 +27,7 @@ use snafu::{ResultExt, Snafu};
 use crate::arch::layout::{PL011_START, PL031_START};
 #[cfg(target_arch = "x86_64")]
 use crate::arch::layout::{PORT_COM1, PORT_FW_CFG_SELECTOR};
-use crate::board::{ArchBoard, Board, BoardConfig};
+use crate::board::{Board, BoardConfig};
 #[cfg(target_arch = "x86_64")]
 use crate::device::fw_cfg::{FwCfg, FwCfgItemParam};
 #[cfg(target_arch = "aarch64")]
@@ -37,9 +37,8 @@ use crate::device::pl031::Pl031;
 #[cfg(target_arch = "x86_64")]
 use crate::device::serial::Serial;
 use crate::errors::{DebugTrace, trace_error};
-use crate::hv::{Hypervisor, IoeventFdRegistry, Vm, VmConfig};
+use crate::hv::{Hypervisor, IoeventFdRegistry, Vm};
 use crate::loader::Payload;
-use crate::mem::Memory;
 use crate::pci::pvpanic::PvPanic;
 use crate::pci::{Bdf, Pci};
 #[cfg(target_os = "linux")]
@@ -117,18 +116,8 @@ impl<H> Machine<H>
 where
     H: Hypervisor,
 {
-    pub fn new(hv: &H, mut config: BoardConfig) -> Result<Self> {
-        config.config_fixup()?;
-
-        let vm_config = VmConfig {
-            coco: config.coco.clone(),
-        };
-        let mut vm = hv.create_vm(&vm_config)?;
-        let vm_memory = vm.create_vm_memory()?;
-        let memory = Memory::new(vm_memory);
-        let arch = ArchBoard::new(hv, &vm, &config)?;
-
-        let board = Arc::new(Board::new(vm, memory, arch, config));
+    pub fn new(hv: &H, config: BoardConfig) -> Result<Self> {
+        let board = Arc::new(Board::new(hv, config)?);
 
         let (event_tx, event_rx) = mpsc::channel();
 

@@ -45,7 +45,7 @@ use crate::device::MmioDev;
 #[cfg(target_arch = "x86_64")]
 use crate::device::fw_cfg::FwCfg;
 use crate::errors::{DebugTrace, trace_error};
-use crate::hv::{Coco, Vcpu, Vm, VmEntry, VmExit};
+use crate::hv::{Coco, Hypervisor, Vcpu, Vm, VmConfig, VmEntry, VmExit};
 #[cfg(target_arch = "x86_64")]
 use crate::loader::xen;
 use crate::loader::{Executable, InitState, Payload, linux};
@@ -58,9 +58,9 @@ use crate::vfio::container::Container;
 use crate::vfio::iommu::Ioas;
 
 #[cfg(target_arch = "aarch64")]
-pub(crate) use self::aarch64::ArchBoard;
+use self::aarch64::ArchBoard;
 #[cfg(target_arch = "x86_64")]
-pub(crate) use self::x86_64::ArchBoard;
+use self::x86_64::ArchBoard;
 
 #[trace_error]
 #[derive(Snafu, DebugTrace)]
@@ -233,10 +233,22 @@ impl<V> Board<V>
 where
     V: Vm,
 {
-    pub fn new(vm: V, memory: Memory, arch: ArchBoard<V>, config: BoardConfig) -> Self {
-        Board {
+    pub fn new<H>(hv: &H, mut config: BoardConfig) -> Result<Self>
+    where
+        H: Hypervisor<Vm = V>,
+    {
+        config.config_fixup()?;
+
+        let vm_config = VmConfig {
+            coco: config.coco.clone(),
+        };
+        let mut vm = hv.create_vm(&vm_config)?;
+        let vm_memory = vm.create_vm_memory()?;
+        let arch = ArchBoard::new(hv, &vm, &config)?;
+
+        let board = Board {
             vm,
-            memory,
+            memory: Memory::new(vm_memory),
             arch,
             config,
             payload: RwLock::new(None),
@@ -257,7 +269,8 @@ where
                 fatal: false,
             }),
             cond_var: Condvar::new(),
-        }
+        };
+        Ok(board)
     }
 
     pub fn boot(&self) -> Result<()> {

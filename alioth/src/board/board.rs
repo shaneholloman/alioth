@@ -272,6 +272,9 @@ where
             }),
             cond_var: Condvar::new(),
         };
+
+        board.coco_init()?;
+
         Ok(board)
     }
 
@@ -429,7 +432,6 @@ where
 
     fn boot_init_sync(&self, index: u16, vcpu: &mut V::Vcpu) -> Result<()> {
         let vcpus = self.vcpus.read();
-        self.coco_init(index)?;
         if index == 0 {
             self.create_ram()?;
             for (port, dev) in self.io_devs.read().iter() {

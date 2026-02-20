@@ -154,7 +154,7 @@ where
         Ok(())
     }
 
-    pub fn coco_init(&self, _id: u16) -> Result<()> {
+    pub fn coco_init(&self) -> Result<()> {
         Ok(())
     }
 

@@ -318,16 +318,14 @@ where
         Ok(())
     }
 
-    pub fn coco_init(&self, index: u16) -> Result<()> {
-        if index != 0 {
+    pub fn coco_init(&self) -> Result<()> {
+        let Some(coco) = &self.config.coco else {
             return Ok(());
-        }
-        if let Some(coco) = &self.config.coco {
-            match coco {
-                Coco::AmdSev { policy } => self.vm.sev_launch_start(*policy)?,
-                Coco::AmdSnp { policy } => self.vm.snp_launch_start(*policy)?,
-                Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
-            }
+        };
+        match coco {
+            Coco::AmdSev { policy } => self.vm.sev_launch_start(*policy)?,
+            Coco::AmdSnp { policy } => self.vm.snp_launch_start(*policy)?,
+            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
         }
         Ok(())
     }

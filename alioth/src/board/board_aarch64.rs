@@ -154,7 +154,7 @@ where
         Ok(())
     }
 
-    pub fn coco_init(&self) -> Result<()> {
+    pub fn coco_init(&self, _: Arc<V::Memory>) -> Result<()> {
         Ok(())
     }
 

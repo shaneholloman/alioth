@@ -245,12 +245,12 @@ where
             coco: config.coco.clone(),
         };
         let mut vm = hv.create_vm(&vm_config)?;
-        let vm_memory = vm.create_vm_memory()?;
+        let vm_memory = Arc::new(vm.create_vm_memory()?);
         let arch = ArchBoard::new(hv, &vm, &config)?;
 
         let board = Board {
             vm,
-            memory: Memory::new(vm_memory),
+            memory: Memory::new(vm_memory.clone()),
             arch,
             config,
             payload: RwLock::new(None),
@@ -273,7 +273,7 @@ where
             cond_var: Condvar::new(),
         };
 
-        board.coco_init()?;
+        board.coco_init(vm_memory)?;
 
         Ok(board)
     }

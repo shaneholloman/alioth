@@ -264,7 +264,7 @@ pub struct Memory {
     callbacks: Mutex<LayoutCallbacks>,
     ram_bus: Arc<RamBus>,
     mmio_bus: RwLock<MmioBus>,
-    vm_memory: Box<dyn VmMemory>,
+    vm_memory: Arc<dyn VmMemory>,
 
     #[cfg(target_arch = "x86_64")]
     io_bus: RwLock<MmioBus>,
@@ -272,13 +272,13 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new(vm_memory: impl VmMemory) -> Self {
+    pub fn new(vm_memory: Arc<dyn VmMemory>) -> Self {
         Memory {
             regions: Mutex::new(Addressable::new()),
             callbacks: Mutex::new(LayoutCallbacks::default()),
             ram_bus: Arc::new(RamBus::new()),
             mmio_bus: RwLock::new(MmioBus::new()),
-            vm_memory: Box::new(vm_memory),
+            vm_memory,
             #[cfg(target_arch = "x86_64")]
             io_bus: RwLock::new(MmioBus::new()),
             io_regions: Mutex::new(Addressable::new()),
@@ -397,7 +397,7 @@ impl Memory {
                 }
                 MemRange::Ram(r) => {
                     self.ram_bus.remove(gpa)?;
-                    for callback in &callbacks.changed {
+                    for callback in callbacks.changed.iter().rev() {
                         callback.ram_removed(gpa, r)?;
                     }
                     self.unmap_from_vm(gpa, r)?;
@@ -603,5 +603,21 @@ impl Memory {
             let data = io_bus.read(port as u64, size)? as u32;
             Ok(VmEntry::Io { data: Some(data) })
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct MarkPrivateMemory {
+    pub memory: Arc<dyn VmMemory>,
+}
+
+impl LayoutChanged for MarkPrivateMemory {
+    fn ram_added(&self, gpa: u64, pages: &ArcMemPages) -> Result<()> {
+        self.memory.mark_private_memory(gpa, pages.size(), true)?;
+        Ok(())
+    }
+
+    fn ram_removed(&self, _: u64, _: &ArcMemPages) -> Result<()> {
+        Ok(())
     }
 }

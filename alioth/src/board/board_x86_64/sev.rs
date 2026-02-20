@@ -13,19 +13,21 @@
 // limitations under the License.
 
 use std::iter::zip;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use zerocopy::FromZeros;
 
 use crate::arch::layout::MEM_64_START;
 use crate::arch::reg::{Reg, SegAccess, SegReg, SegRegVal};
-use crate::arch::sev::{SevPolicy, SnpPageType};
+use crate::arch::sev::{SevPolicy, SnpPageType, SnpPolicy};
 use crate::board::{Board, Result, VcpuGuard};
 use crate::firmware::ovmf::sev::{
     SevDescType, SevMetadataDesc, SnpCpuidFunc, SnpCpuidInfo, parse_desc, parse_sev_ap_eip,
 };
-use crate::hv::{Vcpu, Vm};
+use crate::hv::{Vcpu, Vm, VmMemory};
 use crate::mem::mapped::ArcMemPages;
+use crate::mem::{self, LayoutChanged, MarkPrivateMemory};
 
 impl<V> Board<V>
 where
@@ -160,6 +162,40 @@ where
             )],
             &[],
         )?;
+        Ok(())
+    }
+
+    pub(crate) fn sev_init(&self, policy: SevPolicy, memory: Arc<V::Memory>) -> Result<()> {
+        self.vm.sev_launch_start(policy)?;
+        let encrypt_pages = Box::new(EncryptPages { memory });
+        self.memory.register_change_callback(encrypt_pages)?;
+        Ok(())
+    }
+
+    pub(crate) fn snp_init(&self, policy: SnpPolicy, memory: Arc<V::Memory>) -> Result<()> {
+        self.vm.snp_launch_start(policy)?;
+        let encrypt_pages = Box::new(EncryptPages {
+            memory: memory.clone(),
+        });
+        self.memory.register_change_callback(encrypt_pages)?;
+        let mark_private_memory = Box::new(MarkPrivateMemory { memory });
+        self.memory.register_change_callback(mark_private_memory)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct EncryptPages {
+    memory: Arc<dyn VmMemory>,
+}
+
+impl LayoutChanged for EncryptPages {
+    fn ram_added(&self, _: u64, pages: &ArcMemPages) -> mem::Result<()> {
+        self.memory.register_encrypted_range(pages.as_slice())?;
+        Ok(())
+    }
+
+    fn ram_removed(&self, _: u64, _: &ArcMemPages) -> mem::Result<()> {
         Ok(())
     }
 }

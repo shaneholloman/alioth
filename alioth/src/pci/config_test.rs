@@ -291,7 +291,7 @@ impl VmMemory for FakeVmMemory {
 
 #[test]
 fn test_mem_bar_layout_change() {
-    let memory = Memory::new(FakeVmMemory);
+    let memory = Memory::new(Arc::new(FakeVmMemory));
     let header = fixture_emulated_header();
 
     let callback = assert_matches!(
@@ -351,7 +351,7 @@ fn test_mem_bar_layout_change() {
 
 #[test]
 fn test_io_bar_layout_change() {
-    let memory = Memory::new(FakeVmMemory);
+    let memory = Memory::new(Arc::new(FakeVmMemory));
     let header = fixture_emulated_header();
 
     let callback = assert_matches!(

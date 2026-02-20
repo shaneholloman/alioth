@@ -297,34 +297,23 @@ where
             callbacks: Mutex::new(vec![]),
         };
         memory.add_region(0, Arc::new(region_low))?;
-        if let Some(coco) = &self.config.coco {
-            memory.register_encrypted_pages(&pages_low)?;
-            if let Coco::AmdSnp { .. } = coco {
-                memory.mark_private_memory(0, low_mem_size as _, true)?;
-            }
-        }
+
         if config.mem.size > RAM_32_SIZE {
             let mem_hi_size = config.mem.size - RAM_32_SIZE;
             let mem_hi = self.create_ram_pages(mem_hi_size, c"ram-high")?;
             let region_hi = MemRegion::with_ram(mem_hi.clone(), MemRegionType::Ram);
             memory.add_region(MEM_64_START, Arc::new(region_hi))?;
-            if let Some(coco) = &self.config.coco {
-                memory.register_encrypted_pages(&mem_hi)?;
-                if let Coco::AmdSnp { .. } = coco {
-                    memory.mark_private_memory(MEM_64_START as _, mem_hi_size as _, true)?;
-                }
-            }
         }
         Ok(())
     }
 
-    pub fn coco_init(&self) -> Result<()> {
+    pub fn coco_init(&self, memory: Arc<V::Memory>) -> Result<()> {
         let Some(coco) = &self.config.coco else {
             return Ok(());
         };
         match coco {
-            Coco::AmdSev { policy } => self.vm.sev_launch_start(*policy)?,
-            Coco::AmdSnp { policy } => self.vm.snp_launch_start(*policy)?,
+            Coco::AmdSev { policy } => self.sev_init(*policy, memory)?,
+            Coco::AmdSnp { policy } => self.snp_init(*policy, memory)?,
             Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
         }
         Ok(())

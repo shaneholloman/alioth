@@ -16,7 +16,7 @@
 #[path = "board_aarch64.rs"]
 mod aarch64;
 #[cfg(target_arch = "x86_64")]
-#[path = "board_x86_64.rs"]
+#[path = "board_x86_64/board_x86_64.rs"]
 mod x86_64;
 
 #[cfg(target_os = "linux")]
@@ -92,7 +92,7 @@ pub enum Error {
     #[snafu(display("Failed to reset PCI devices"))]
     ResetPci { source: Box<crate::pci::Error> },
     #[snafu(display("Failed to configure firmware"))]
-    Firmware { error: std::io::Error },
+    FwCfg { error: std::io::Error },
     #[snafu(display("Missing payload"))]
     MissingPayload,
     #[snafu(display("Failed to notify the VMM thread"))]
@@ -104,6 +104,8 @@ pub enum Error {
     #[cfg(target_arch = "x86_64")]
     #[snafu(display("Missing CPUID leaf {leaf:x?}"))]
     MissingCpuid { leaf: CpuidIn },
+    #[snafu(display("Firmware error"), context(false))]
+    Firmware { source: Box<crate::firmware::Error> },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

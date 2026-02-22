@@ -12,17 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod sev;
+
 use std::arch::x86_64::{__cpuid, CpuidResult};
 use std::collections::HashMap;
-use std::iter::zip;
 use std::mem::{offset_of, size_of, size_of_val};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 
 use parking_lot::Mutex;
 use snafu::ResultExt;
-use zerocopy::{FromBytes, FromZeros, IntoBytes};
+use zerocopy::{FromZeros, IntoBytes};
 
 use crate::arch::cpuid::CpuidIn;
 use crate::arch::layout::{
@@ -30,8 +31,6 @@ use crate::arch::layout::{
     PORT_ACPI_SLEEP_CONTROL, RAM_32_SIZE,
 };
 use crate::arch::msr::{IA32_MISC_ENABLE, MiscEnable};
-use crate::arch::reg::{Reg, SegAccess, SegReg, SegRegVal};
-use crate::arch::sev::SnpPageType;
 use crate::board::{Board, BoardConfig, CpuTopology, PCIE_MMIO_64_SIZE, Result, VcpuGuard, error};
 use crate::device::ioapic::IoApic;
 use crate::firmware::acpi::bindings::{
@@ -40,11 +39,6 @@ use crate::firmware::acpi::bindings::{
 use crate::firmware::acpi::reg::{FadtReset, FadtSleepControl};
 use crate::firmware::acpi::{
     AcpiTable, create_fadt, create_madt, create_mcfg, create_rsdp, create_xsdt,
-};
-use crate::firmware::ovmf::parse_data;
-use crate::firmware::ovmf::sev::{
-    GUID_SEV_ES_RESET_BLOCK, GUID_SEV_METADATA, SevDescType, SevMetaData, SevMetadataDesc,
-    SnpCpuidFunc, SnpCpuidInfo,
 };
 use crate::hv::{Coco, Hypervisor, Vcpu, Vm};
 use crate::loader::{Executable, InitState, Payload, firmware};
@@ -197,88 +191,19 @@ where
         encode_x2apic_id(&self.config.cpu.topology, index) as u64
     }
 
-    fn fill_snp_cpuid(&self, entries: &mut [SnpCpuidFunc]) {
-        for ((in_, out), dst) in zip(self.arch.cpuids.iter(), entries.iter_mut()) {
-            dst.eax_in = in_.func;
-            dst.ecx_in = in_.index.unwrap_or(0);
-            dst.eax = out.eax;
-            dst.ebx = out.ebx;
-            dst.ecx = out.ecx;
-            dst.edx = out.edx;
-            if dst.eax_in == 0xd && (dst.ecx_in == 0x0 || dst.ecx_in == 0x1) {
-                dst.ebx = 0x240;
-                dst.xcr0_in = 1;
-                dst.xss_in = 0;
-            }
-        }
-    }
-
-    fn parse_sev_es_ap(&self, coco: &Coco, fw: &ArcMemPages) {
-        match coco {
-            Coco::AmdSev { policy } if policy.es() => {}
-            Coco::AmdSnp { .. } => {}
-            _ => return,
-        }
-        let ap_eip = parse_data(fw.as_slice(), &GUID_SEV_ES_RESET_BLOCK).unwrap();
-        let ap_eip = u32::read_from_bytes(ap_eip).unwrap();
-        self.arch.sev_ap_eip.store(ap_eip, Ordering::Release);
-    }
-
-    fn update_snp_desc(&self, offset: usize, fw_range: &mut [u8]) -> Result<()> {
-        let mut cpuid_table = SnpCpuidInfo::new_zeroed();
-        let ram_bus = self.memory.ram_bus();
-        let ram = ram_bus.lock_layout();
-        let (desc, _) = SevMetadataDesc::read_from_prefix(&fw_range[offset..]).unwrap();
-        let snp_page_type = match desc.type_ {
-            SevDescType::SNP_DESC_MEM => SnpPageType::UNMEASURED,
-            SevDescType::SNP_SECRETS => SnpPageType::SECRETS,
-            SevDescType::CPUID => {
-                assert!(desc.len as usize >= size_of::<SnpCpuidInfo>());
-                assert!(cpuid_table.entries.len() >= self.arch.cpuids.len());
-                cpuid_table.count = self.arch.cpuids.len() as u32;
-                self.fill_snp_cpuid(&mut cpuid_table.entries);
-                ram.write_t(desc.base as _, &cpuid_table)?;
-                SnpPageType::CPUID
-            }
-            _ => unimplemented!(),
-        };
-        let range_ref = ram.get_slice::<u8>(desc.base as u64, desc.len as u64)?;
-        let range_bytes =
-            unsafe { std::slice::from_raw_parts_mut(range_ref.as_ptr() as _, range_ref.len()) };
-        self.memory
-            .mark_private_memory(desc.base as _, desc.len as _, true)?;
-        let mut ret = self
-            .vm
-            .snp_launch_update(range_bytes, desc.base as _, snp_page_type);
-        if ret.is_err() && desc.type_ == SevDescType::CPUID {
-            let updated_cpuid: SnpCpuidInfo = ram.read_t(desc.base as _)?;
-            for (set, got) in zip(cpuid_table.entries.iter(), updated_cpuid.entries.iter()) {
-                if set != got {
-                    log::error!("set {set:#x?}, but firmware expects {got:#x?}");
-                }
-            }
-            ram.write_t(desc.base as _, &updated_cpuid)?;
-            ret = self
-                .vm
-                .snp_launch_update(range_bytes, desc.base as _, snp_page_type);
-        }
-        ret?;
-        Ok(())
-    }
-
     fn setup_fw_cfg(&self, payload: &Payload) -> Result<()> {
         let Some(dev) = &*self.fw_cfg.lock() else {
             return Ok(());
         };
         let mut dev = dev.lock();
         if let Some(Executable::Linux(image)) = &payload.executable {
-            dev.add_kernel_data(image).context(error::Firmware)?;
+            dev.add_kernel_data(image).context(error::FwCfg)?;
         };
         if let Some(cmdline) = &payload.cmdline {
             dev.add_kernel_cmdline(cmdline.to_owned());
         };
         if let Some(initramfs) = &payload.initramfs {
-            dev.add_initramfs_data(initramfs).context(error::Firmware)?;
+            dev.add_initramfs_data(initramfs).context(error::FwCfg)?;
         };
         Ok(())
     }
@@ -287,34 +212,11 @@ where
         let Some(coco) = &self.config.coco else {
             return Ok(());
         };
-        self.memory.register_encrypted_pages(fw)?;
-        self.parse_sev_es_ap(coco, fw);
         match coco {
-            Coco::AmdSev { .. } => {
-                self.vm.sev_launch_update_data(fw.as_slice_mut())?;
-            }
-            Coco::AmdSnp { .. } => {
-                let fw_range = fw.as_slice_mut();
-                let metadata_offset_r = parse_data(fw_range, &GUID_SEV_METADATA).unwrap();
-                let metadata_offset =
-                    fw_range.len() - u32::read_from_bytes(metadata_offset_r).unwrap() as usize;
-                let (metadata, _) =
-                    SevMetaData::read_from_prefix(&fw_range[metadata_offset..]).unwrap();
-                let desc_offset = metadata_offset + size_of::<SevMetaData>();
-                for i in 0..metadata.num_desc as usize {
-                    let offset = desc_offset + i * size_of::<SevMetadataDesc>();
-                    self.update_snp_desc(offset, fw_range)?;
-                }
-                let fw_gpa = MEM_64_START - fw_range.len() as u64;
-                self.memory
-                    .mark_private_memory(fw_gpa, fw_range.len() as _, true)?;
-                self.vm
-                    .snp_launch_update(fw_range, fw_gpa, SnpPageType::NORMAL)
-                    .unwrap();
-            }
+            Coco::AmdSev { policy } => self.setup_sev(fw, *policy),
+            Coco::AmdSnp { .. } => self.setup_snp(fw),
             Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
         }
-        Ok(())
     }
 
     pub fn setup_firmware(&self, fw: &Path, payload: &Payload) -> Result<InitState> {
@@ -325,30 +227,18 @@ where
     }
 
     pub fn init_ap(&self, index: u16, vcpu: &mut V::Vcpu, vcpus: &VcpuGuard) -> Result<()> {
-        match &self.config.coco {
-            Some(Coco::AmdSev { policy }) if policy.es() => {}
-            Some(Coco::AmdSnp { .. }) => {}
-            _ => return Ok(()),
-        }
-        self.sync_vcpus(vcpus)?;
-        if index == 0 {
+        let Some(coco) = &self.config.coco else {
             return Ok(());
+        };
+        match coco {
+            Coco::AmdSev { policy } => {
+                if policy.es() {
+                    self.sev_init_ap(index, vcpu, vcpus)?;
+                }
+            }
+            Coco::AmdSnp { .. } => self.sev_init_ap(index, vcpu, vcpus)?,
+            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
         }
-        let eip = self.arch.sev_ap_eip.load(Ordering::Acquire);
-        vcpu.set_regs(&[(Reg::Rip, eip as u64 & 0xffff)])?;
-        vcpu.set_sregs(
-            &[],
-            &[(
-                SegReg::Cs,
-                SegRegVal {
-                    selector: 0xf000,
-                    base: eip as u64 & 0xffff_0000,
-                    limit: 0xffff,
-                    access: SegAccess(0x9b),
-                },
-            )],
-            &[],
-        )?;
         Ok(())
     }
 
@@ -443,26 +333,18 @@ where
     }
 
     pub fn coco_finalize(&self, index: u16, vcpus: &VcpuGuard) -> Result<()> {
-        if let Some(coco) = &self.config.coco {
-            self.sync_vcpus(vcpus)?;
-            if index == 0 {
-                match coco {
-                    Coco::AmdSev { policy } => {
-                        if policy.es() {
-                            self.vm.sev_launch_update_vmsa()?;
-                        }
-                        self.vm.sev_launch_measure()?;
-                        self.vm.sev_launch_finish()?;
-                    }
-                    Coco::AmdSnp { .. } => {
-                        self.vm.snp_launch_finish()?;
-                    }
-                    Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
-                }
-            }
-            self.sync_vcpus(vcpus)?;
+        let Some(coco) = &self.config.coco else {
+            return Ok(());
+        };
+        self.sync_vcpus(vcpus)?;
+        if index != 0 {
+            return Ok(());
+        };
+        match coco {
+            Coco::AmdSev { policy } => self.sev_finalize(*policy),
+            Coco::AmdSnp { .. } => self.snp_finalize(),
+            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
         }
-        Ok(())
     }
 
     fn patch_dsdt(&self, data: &mut [u8; 352]) {
@@ -556,9 +438,9 @@ where
         }
         if let Some(fw_cfg) = &*self.fw_cfg.lock() {
             let mut dev = fw_cfg.lock();
-            dev.add_acpi(acpi_table).context(error::Firmware)?;
+            dev.add_acpi(acpi_table).context(error::FwCfg)?;
             let mem_regions = memory.mem_region_entries();
-            dev.add_e820(&mem_regions).context(error::Firmware)?;
+            dev.add_e820(&mem_regions).context(error::FwCfg)?;
         }
         Ok(())
     }

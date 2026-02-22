@@ -360,10 +360,16 @@ pub struct KvmRunExitIo {
     pub data_offset: u64,
 }
 
+consts! {
+    pub struct KvmHypercall(u64) {
+        MAP_GPA_RANGE = 12;
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct KvmRunExitHypercall {
-    pub nr: u64,
+    pub nr: KvmHypercall,
     pub args: [u64; 6],
     pub ret: u64,
     pub flags: u64,
@@ -516,8 +522,6 @@ bitflags! {
         DISABLE_BROADCAST_QUIRK = 1 << 1;
     }
 }
-
-pub const KVM_HC_MAP_GPA_RANGE: u64 = 12;
 
 bitflags! {
     pub struct KvmMapGpaRangeFlag(u64) {

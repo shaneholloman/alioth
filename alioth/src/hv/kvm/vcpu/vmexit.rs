@@ -16,7 +16,7 @@ use crate::hv::kvm::vcpu::KvmVcpu;
 use crate::hv::{Error, VmExit, error};
 #[cfg(target_arch = "x86_64")]
 use crate::sys::kvm::KvmExitIo;
-use crate::sys::kvm::{KVM_HC_MAP_GPA_RANGE, KvmMapGpaRangeFlag, KvmSystemEvent};
+use crate::sys::kvm::{KvmHypercall, KvmMapGpaRangeFlag, KvmSystemEvent};
 
 impl KvmVcpu {
     #[cfg(target_endian = "little")]
@@ -61,7 +61,7 @@ impl KvmVcpu {
     pub(super) fn handle_hypercall(&mut self) -> Result<VmExit, Error> {
         let hypercall = unsafe { self.kvm_run.exit.hypercall };
         match hypercall.nr {
-            KVM_HC_MAP_GPA_RANGE => {
+            KvmHypercall::MAP_GPA_RANGE => {
                 let flag = KvmMapGpaRangeFlag::from_bits_retain(hypercall.args[2]);
                 Ok(VmExit::ConvertMemory {
                     gpa: hypercall.args[0],

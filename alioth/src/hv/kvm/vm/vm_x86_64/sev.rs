@@ -19,7 +19,7 @@ use snafu::ResultExt;
 use crate::arch::sev::{SevPolicy, SevStatus, SnpPageType, SnpPolicy};
 use crate::hv::kvm::KvmVm;
 use crate::hv::{Result, error};
-use crate::sys::kvm::{KvmCap, kvm_memory_encrypt_op};
+use crate::sys::kvm::{KvmCap, KvmHypercall, kvm_memory_encrypt_op};
 use crate::sys::sev::{
     KvmSevCmd, KvmSevCmdId, KvmSevInit, KvmSevLaunchMeasure, KvmSevLaunchStart,
     KvmSevLaunchUpdateData, KvmSevSnpLaunchFinish, KvmSevSnpLaunchStart, KvmSevSnpLaunchUpdate,
@@ -55,8 +55,8 @@ impl KvmVm {
     }
 
     pub fn snp_init(&self) -> Result<()> {
-        let bitmap = self.vm.check_extension(KvmCap::EXIT_HYPERCALL)?.get();
-        self.vm.enable_cap(KvmCap::EXIT_HYPERCALL, bitmap as u64)?;
+        let map_gpa_range = 1 << KvmHypercall::MAP_GPA_RANGE.raw();
+        self.vm.enable_cap(KvmCap::EXIT_HYPERCALL, map_gpa_range)?;
         let mut init = KvmSevInit::default();
         self.sev_op(KvmSevCmdId::INIT2, Some(&mut init))
     }

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod sev;
+mod sev;
+mod tdx;
 
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::path::Path;
@@ -58,7 +59,7 @@ impl VmArch {
                 let fd = SevFd::new(dev_sev)?;
                 Ok(VmArch { sev_fd: Some(fd) })
             }
-            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
+            Coco::IntelTdx { .. } => Ok(VmArch::default()),
         }
     }
 }
@@ -91,14 +92,6 @@ impl KvmVm {
     }
 
     pub fn init(&self, config: &VmConfig) -> Result<()> {
-        if let Some(coco) = &config.coco {
-            match coco {
-                Coco::AmdSev { policy } => self.sev_init(*policy),
-                Coco::AmdSnp { .. } => self.snp_init(),
-                Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
-            }?;
-        }
-
         let x2apic_caps =
             KvmX2apicApiFlag::USE_32BIT_IDS | KvmX2apicApiFlag::DISABLE_BROADCAST_QUIRK;
         if let Err(e) = self.vm.enable_cap(KvmCap::X2APIC_API, x2apic_caps.bits()) {
@@ -109,6 +102,15 @@ impl KvmVm {
         unsafe { kvm_set_tss_addr(&self.vm.fd, 0xf000_0000) }.context(error::SetVmParam)?;
         unsafe { kvm_set_identity_map_addr(&self.vm.fd, &0xf000_3000) }
             .context(error::SetVmParam)?;
+
+        if let Some(coco) = &config.coco {
+            match coco {
+                Coco::AmdSev { policy } => self.sev_init(*policy),
+                Coco::AmdSnp { .. } => self.snp_init(),
+                Coco::IntelTdx { .. } => self.tdx_init(),
+            }?;
+        }
+
         Ok(())
     }
 }

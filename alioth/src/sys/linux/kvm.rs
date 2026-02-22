@@ -530,6 +530,7 @@ consts! {
         EXIT_HYPERCALL = 201;
         // GUEST_MEMFD = 234;
         // VM_TYPES = 235;
+        X86_APIC_BUS_CYCLES_NS = 237;
     }
 }
 

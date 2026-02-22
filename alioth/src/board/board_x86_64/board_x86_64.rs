@@ -276,24 +276,31 @@ where
         let pages_low = self.create_ram_pages(low_mem_size, c"ram-low")?;
         let region_low = MemRegion {
             ranges: vec![MemRange::Ram(pages_low.clone())],
-            entries: vec![
-                MemRegionEntry {
-                    size: BIOS_DATA_END,
-                    type_: MemRegionType::Reserved,
-                },
-                MemRegionEntry {
-                    size: EBDA_START - BIOS_DATA_END,
+            entries: if self.config.coco.is_none() {
+                vec![
+                    MemRegionEntry {
+                        size: BIOS_DATA_END,
+                        type_: MemRegionType::Reserved,
+                    },
+                    MemRegionEntry {
+                        size: EBDA_START - BIOS_DATA_END,
+                        type_: MemRegionType::Ram,
+                    },
+                    MemRegionEntry {
+                        size: EBDA_END - EBDA_START,
+                        type_: MemRegionType::Acpi,
+                    },
+                    MemRegionEntry {
+                        size: low_mem_size - EBDA_END,
+                        type_: MemRegionType::Ram,
+                    },
+                ]
+            } else {
+                vec![MemRegionEntry {
+                    size: low_mem_size,
                     type_: MemRegionType::Ram,
-                },
-                MemRegionEntry {
-                    size: EBDA_END - EBDA_START,
-                    type_: MemRegionType::Acpi,
-                },
-                MemRegionEntry {
-                    size: low_mem_size - EBDA_END,
-                    type_: MemRegionType::Ram,
-                },
-            ],
+                }]
+            },
             callbacks: Mutex::new(vec![]),
         };
         memory.add_region(0, Arc::new(region_low))?;

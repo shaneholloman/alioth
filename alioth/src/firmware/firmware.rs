@@ -19,6 +19,8 @@ pub mod acpi;
 pub mod dt;
 #[path = "ovmf/ovmf.rs"]
 pub mod ovmf;
+#[path = "uefi/uefi.rs"]
+pub mod uefi;
 
 use snafu::Snafu;
 

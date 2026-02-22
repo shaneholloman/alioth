@@ -290,6 +290,7 @@ consts! {
         MMIO = 6;
         SHUTDOWN = 8;
         SYSTEM_EVENT = 24;
+        MEMORY_FAULT = 39;
     }
 }
 
@@ -305,6 +306,20 @@ consts! {
 pub struct KvmRunExitSystemEvent {
     pub type_: KvmSystemEvent,
     pub flags: u64,
+}
+
+bitflags! {
+    pub struct KvmMemoryFaultFlag(u64) {
+        PRIVATE = 1 << 3;
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KvmRunExitMemoryFault {
+    pub flags: KvmMemoryFaultFlag,
+    pub gpa: u64,
+    pub size: u64,
 }
 
 #[repr(C)]
@@ -324,6 +339,7 @@ pub struct KvmRun {
     pub kvm_dirty_regs: u64,
     pub s: KvmSyncRegsBlock,
 }
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union KvmRunExit {
@@ -331,6 +347,7 @@ pub union KvmRunExit {
     pub io: KvmRunExitIo,
     pub hypercall: KvmRunExitHypercall,
     pub system_event: KvmRunExitSystemEvent,
+    pub memory_fault: KvmRunExitMemoryFault,
     pub padding: [u8; 256],
 }
 

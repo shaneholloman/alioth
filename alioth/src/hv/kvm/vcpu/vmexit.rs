@@ -16,7 +16,7 @@ use crate::hv::kvm::vcpu::KvmVcpu;
 use crate::hv::{Error, VmExit, error};
 #[cfg(target_arch = "x86_64")]
 use crate::sys::kvm::KvmExitIo;
-use crate::sys::kvm::{KvmHypercall, KvmMapGpaRangeFlag, KvmSystemEvent};
+use crate::sys::kvm::{KvmHypercall, KvmMapGpaRangeFlag, KvmMemoryFaultFlag, KvmSystemEvent};
 
 impl KvmVcpu {
     #[cfg(target_endian = "little")]
@@ -82,6 +82,16 @@ impl KvmVcpu {
                 msg: format!("{kvm_system_event:#x?}"),
             }
             .fail(),
+        }
+    }
+
+    pub(crate) fn handle_memory_fault(&mut self) -> VmExit {
+        let memory_fault = unsafe { &self.kvm_run.exit.memory_fault };
+        let private = memory_fault.flags.contains(KvmMemoryFaultFlag::PRIVATE);
+        VmExit::ConvertMemory {
+            gpa: memory_fault.gpa,
+            size: memory_fault.size,
+            private,
         }
     }
 }

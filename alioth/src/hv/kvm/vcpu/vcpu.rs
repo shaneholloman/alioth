@@ -26,7 +26,6 @@ mod vmexit;
 use std::arch::x86_64::CpuidResult;
 #[cfg(target_arch = "x86_64")]
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::ops::{Deref, DerefMut};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::ptr::null_mut;
@@ -183,17 +182,17 @@ impl Vcpu for KvmVcpu {
         };
         let ret = unsafe { kvm_run(&self.fd) };
         match ret {
-            Err(e) => match (e.kind(), entry) {
-                (ErrorKind::WouldBlock, _) => Ok(VmExit::Interrupted),
-                (ErrorKind::Interrupted, VmEntry::Shutdown) => {
+            Err(e) => match (e.raw_os_error(), entry) {
+                (Some(libc::EAGAIN), _) => Ok(VmExit::Interrupted),
+                (Some(libc::EINTR), VmEntry::Shutdown) => {
                     self.set_immediate_exit(false);
                     Ok(VmExit::Shutdown)
                 }
-                (ErrorKind::Interrupted, VmEntry::Reboot) => {
+                (Some(libc::EINTR), VmEntry::Reboot) => {
                     self.set_immediate_exit(false);
                     Ok(VmExit::Reboot)
                 }
-                (ErrorKind::Interrupted, VmEntry::Pause) => {
+                (Some(libc::EINTR), VmEntry::Pause) => {
                     #[cfg(target_arch = "x86_64")]
                     if let Err(e) = self.kvmclock_ctrl() {
                         log::error!("Failed to control kvmclock: {e:?}");
@@ -201,7 +200,10 @@ impl Vcpu for KvmVcpu {
                     self.set_immediate_exit(false);
                     Ok(VmExit::Paused)
                 }
-                (ErrorKind::Interrupted, _) => Ok(VmExit::Interrupted),
+                (Some(libc::EINTR), _) => Ok(VmExit::Interrupted),
+                (Some(libc::EFAULT), _) if self.kvm_run.exit_reason == KvmExit::MEMORY_FAULT => {
+                    Ok(self.handle_memory_fault())
+                }
                 _ => Err(e).context(error::RunVcpu),
             },
             Ok(_) => match self.kvm_run.exit_reason {

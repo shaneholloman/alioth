@@ -21,7 +21,7 @@ use zerocopy::FromZeros;
 use crate::arch::layout::MEM_64_START;
 use crate::arch::reg::{Reg, SegAccess, SegReg, SegRegVal};
 use crate::arch::sev::{SevPolicy, SnpPageType, SnpPolicy};
-use crate::board::{Board, Result, VcpuGuard};
+use crate::board::{Board, Result};
 use crate::firmware::ovmf::sev::{
     SevDescType, SevMetadataDesc, SnpCpuidFunc, SnpCpuidInfo, parse_desc, parse_sev_ap_eip,
 };
@@ -137,16 +137,7 @@ where
         Ok(())
     }
 
-    pub(crate) fn sev_init_ap(
-        &self,
-        index: u16,
-        vcpu: &mut V::Vcpu,
-        vcpus: &VcpuGuard,
-    ) -> Result<()> {
-        self.sync_vcpus(vcpus)?;
-        if index == 0 {
-            return Ok(());
-        }
+    pub(crate) fn sev_init_ap(&self, vcpu: &mut V::Vcpu) -> Result<()> {
         let eip = self.arch.sev_ap_eip.load(Ordering::Acquire);
         vcpu.set_regs(&[(Reg::Rip, eip as u64 & 0xffff)])?;
         vcpu.set_sregs(

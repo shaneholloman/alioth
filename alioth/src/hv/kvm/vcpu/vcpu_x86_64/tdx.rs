@@ -36,4 +36,8 @@ impl KvmVcpu {
             Some(&mut region),
         )
     }
+
+    pub fn tdx_init_vcpu(&self, mut hob: u64) -> Result<()> {
+        tdx_op(&self.fd, KvmTdxCmdId::INIT_VCPU, 0, Some(&mut hob))
+    }
 }

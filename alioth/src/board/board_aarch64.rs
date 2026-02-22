@@ -108,7 +108,7 @@ where
         encode_mpidr(&self.config.cpu.topology, index).0
     }
 
-    pub fn setup_firmware(&self, _: &Path, _: &Payload) -> Result<InitState> {
+    pub fn setup_firmware(&self, _: &Path, _: &Payload, _: &V::Vcpu) -> Result<InitState> {
         unimplemented!()
     }
 

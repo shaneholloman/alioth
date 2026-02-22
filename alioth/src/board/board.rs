@@ -312,14 +312,14 @@ where
         Ok(())
     }
 
-    fn load_payload(&self) -> Result<InitState, Error> {
+    fn load_payload(&self, vcpu: &mut V::Vcpu) -> Result<InitState, Error> {
         let payload = self.payload.read();
         let Some(payload) = payload.as_ref() else {
             return error::MissingPayload.fail();
         };
 
         if let Some(fw) = payload.firmware.as_ref() {
-            return self.setup_firmware(fw, payload);
+            return self.setup_firmware(fw, payload, vcpu);
         }
 
         let Some(exec) = &payload.executable else {
@@ -441,7 +441,7 @@ where
                 self.memory.add_mmio_dev(*addr, dev.clone())?;
             }
             self.add_pci_devs()?;
-            let init_state = self.load_payload()?;
+            let init_state = self.load_payload(vcpu)?;
             self.init_boot_vcpu(vcpu, &init_state)?;
             self.create_firmware_data(&init_state)?;
         }

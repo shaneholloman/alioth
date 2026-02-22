@@ -236,6 +236,11 @@ impl Vcpu for KvmVcpu {
     }
 
     #[cfg(target_arch = "x86_64")]
+    fn tdx_init_vcpu(&self, hob: u64) -> Result<()> {
+        KvmVcpu::tdx_init_vcpu(self, hob)
+    }
+
+    #[cfg(target_arch = "x86_64")]
     fn tdx_init_mem_region(&self, data: &[u8], gpa: u64, measure: bool) -> Result<()> {
         KvmVcpu::tdx_init_mem_region(self, data, gpa, measure)
     }

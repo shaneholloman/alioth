@@ -19,7 +19,7 @@ use crate::arch::layout::MEM_64_START;
 use crate::arch::tdx::TdAttr;
 use crate::board::{Board, Result, error};
 use crate::firmware::ovmf::tdx::{TdvfSectionType, create_hob, parse_entries};
-use crate::hv::{Vm, VmMemory};
+use crate::hv::{Vcpu, Vm, VmMemory};
 use crate::mem::MarkPrivateMemory;
 use crate::mem::mapped::ArcMemPages;
 
@@ -41,7 +41,7 @@ where
         Ok(hob_phys)
     }
 
-    pub(crate) fn setup_tdx(&self, fw: &mut ArcMemPages) -> Result<()> {
+    pub(crate) fn setup_tdx(&self, fw: &mut ArcMemPages, vcpu: &V::Vcpu) -> Result<()> {
         let data = fw.as_slice();
         let entries = parse_entries(data)?;
 
@@ -70,8 +70,16 @@ where
         let Some(hob_ram) = &mut hob_ram else {
             return error::MissingPayload.fail();
         };
-        self.create_hob(hob_ram.as_slice_mut(), accepted)?;
+        let hob_phys = self.create_hob(hob_ram.as_slice_mut(), accepted)?;
+
+        vcpu.tdx_init_vcpu(hob_phys)?;
 
         todo!()
+    }
+
+    pub(crate) fn tdx_init_ap(&self, vcpu: &mut V::Vcpu) -> Result<()> {
+        let hob = self.arch.tdx_hob.load(Ordering::Relaxed);
+        vcpu.tdx_init_vcpu(hob)?;
+        Ok(())
     }
 }

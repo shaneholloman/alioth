@@ -211,20 +211,25 @@ where
         Ok(())
     }
 
-    fn setup_coco(&self, fw: &mut ArcMemPages) -> Result<()> {
+    fn setup_coco(&self, fw: &mut ArcMemPages, vcpu: &V::Vcpu) -> Result<()> {
         let Some(coco) = &self.config.coco else {
             return Ok(());
         };
         match coco {
             Coco::AmdSev { policy } => self.setup_sev(fw, *policy),
             Coco::AmdSnp { .. } => self.setup_snp(fw),
-            Coco::IntelTdx { .. } => self.setup_tdx(fw),
+            Coco::IntelTdx { .. } => self.setup_tdx(fw, vcpu),
         }
     }
 
-    pub fn setup_firmware(&self, fw: &Path, payload: &Payload) -> Result<InitState> {
+    pub fn setup_firmware(
+        &self,
+        fw: &Path,
+        payload: &Payload,
+        vcpu: &V::Vcpu,
+    ) -> Result<InitState> {
         let (init_state, mut rom) = firmware::load(&self.memory, fw)?;
-        self.setup_coco(&mut rom)?;
+        self.setup_coco(&mut rom, vcpu)?;
         self.setup_fw_cfg(payload)?;
         Ok(init_state)
     }
@@ -233,19 +238,26 @@ where
         let Some(coco) = &self.config.coco else {
             return Ok(());
         };
+        self.sync_vcpus(vcpus)?;
+        if index == 0 {
+            return Ok(());
+        }
         match coco {
             Coco::AmdSev { policy } => {
                 if policy.es() {
-                    self.sev_init_ap(index, vcpu, vcpus)?;
+                    self.sev_init_ap(vcpu)?;
                 }
             }
-            Coco::AmdSnp { .. } => self.sev_init_ap(index, vcpu, vcpus)?,
-            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
+            Coco::AmdSnp { .. } => self.sev_init_ap(vcpu)?,
+            Coco::IntelTdx { .. } => self.tdx_init_ap(vcpu)?,
         }
         Ok(())
     }
 
     pub fn init_boot_vcpu(&self, vcpu: &mut V::Vcpu, init_state: &InitState) -> Result<()> {
+        if matches!(self.config.coco, Some(Coco::IntelTdx { .. })) {
+            return Ok(());
+        }
         vcpu.set_sregs(&init_state.sregs, &init_state.seg_regs, &init_state.dt_regs)?;
         vcpu.set_regs(&init_state.regs)?;
         Ok(())

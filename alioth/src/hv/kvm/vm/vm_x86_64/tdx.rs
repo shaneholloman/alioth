@@ -82,4 +82,8 @@ impl KvmVm {
         tdx_op(&self.vm.fd, KvmTdxCmdId::INIT_VM, 0, Some(&mut *init))?;
         Ok(())
     }
+
+    pub fn tdx_finalize_vm(&self) -> Result<()> {
+        tdx_op::<()>(&self.vm.fd, KvmTdxCmdId::FINALIZE_VM, 0, None)
+    }
 }

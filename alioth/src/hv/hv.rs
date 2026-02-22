@@ -396,6 +396,9 @@ pub trait Vm {
     #[cfg(target_arch = "x86_64")]
     fn tdx_init_vm(&self, attr: TdAttr, cpuids: &HashMap<CpuidIn, CpuidResult>) -> Result<()>;
 
+    #[cfg(target_arch = "x86_64")]
+    fn tdx_finalize_vm(&self) -> Result<()>;
+
     #[cfg(target_arch = "aarch64")]
     type GicV2: GicV2;
     #[cfg(target_arch = "aarch64")]

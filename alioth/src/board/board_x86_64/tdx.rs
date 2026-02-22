@@ -107,4 +107,9 @@ where
         vcpu.tdx_init_vcpu(hob)?;
         Ok(())
     }
+
+    pub(crate) fn tdx_finalize(&self) -> Result<()> {
+        self.vm.tdx_finalize_vm()?;
+        Ok(())
+    }
 }

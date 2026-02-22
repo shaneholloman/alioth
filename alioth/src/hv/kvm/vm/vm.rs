@@ -766,6 +766,11 @@ impl Vm for KvmVm {
         KvmVm::tdx_init_vm(self, attr, cpuids)
     }
 
+    #[cfg(target_arch = "x86_64")]
+    fn tdx_finalize_vm(&self) -> Result<()> {
+        KvmVm::tdx_finalize_vm(self)
+    }
+
     #[cfg(target_arch = "aarch64")]
     fn create_gic_v2(&self, distributor_base: u64, cpu_interface_base: u64) -> Result<Self::GicV2> {
         aarch64::KvmGicV2::new(self, distributor_base, cpu_interface_base)

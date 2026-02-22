@@ -352,7 +352,7 @@ where
         match coco {
             Coco::AmdSev { policy } => self.sev_finalize(*policy),
             Coco::AmdSnp { .. } => self.snp_finalize(),
-            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
+            Coco::IntelTdx { .. } => self.tdx_finalize(),
         }
     }
 

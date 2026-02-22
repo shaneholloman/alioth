@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod sev;
+mod tdx;
 
 use std::arch::x86_64::{__cpuid, CpuidResult};
 use std::collections::HashMap;
@@ -321,7 +322,7 @@ where
         match coco {
             Coco::AmdSev { policy } => self.sev_init(*policy, memory)?,
             Coco::AmdSnp { policy } => self.snp_init(*policy, memory)?,
-            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
+            Coco::IntelTdx { attr } => self.tdx_init(*attr, memory)?,
         }
         Ok(())
     }

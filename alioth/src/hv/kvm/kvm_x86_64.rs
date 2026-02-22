@@ -24,6 +24,26 @@ use crate::sys::kvm::{
     KvmCpuidFeature, KvmX2apicApiFlag, kvm_get_supported_cpuid,
 };
 
+impl From<KvmCpuidEntry2> for (CpuidIn, CpuidResult) {
+    fn from(value: KvmCpuidEntry2) -> Self {
+        let in_ = CpuidIn {
+            func: value.function,
+            index: if value.flags.contains(KvmCpuid2Flag::SIGNIFCANT_INDEX) || value.index > 0 {
+                Some(value.index)
+            } else {
+                None
+            },
+        };
+        let result = CpuidResult {
+            eax: value.eax,
+            ebx: value.ebx,
+            ecx: value.ecx,
+            edx: value.edx,
+        };
+        (in_, result)
+    }
+}
+
 impl Kvm {
     pub fn get_supported_cpuids(&self) -> Result<HashMap<CpuidIn, CpuidResult>> {
         let mut kvm_cpuid2 = KvmCpuid2 {
@@ -32,29 +52,12 @@ impl Kvm {
             entries: [KvmCpuidEntry2::default(); KVM_MAX_CPUID_ENTRIES],
         };
         unsafe { kvm_get_supported_cpuid(&self.fd, &mut kvm_cpuid2) }.context(error::GuestCpuid)?;
-        let map_f = |e: &KvmCpuidEntry2| {
-            let in_ = CpuidIn {
-                func: e.function,
-                index: if e.flags.contains(KvmCpuid2Flag::SIGNIFCANT_INDEX) {
-                    Some(e.index)
-                } else {
-                    None
-                },
-            };
-            let out = CpuidResult {
-                eax: e.eax,
-                ebx: e.ebx,
-                ecx: e.ecx,
-                edx: e.edx,
-            };
-            (in_, out)
-        };
         let mut cpuids: HashMap<_, _> = kvm_cpuid2
             .entries
-            .iter()
+            .into_iter()
             .filter(|e| e.eax != 0 || e.ebx != 0 || e.ecx != 0 || e.edx != 0)
             .take(kvm_cpuid2.nent as usize)
-            .map(map_f)
+            .map(From::from)
             .collect();
 
         let leaf_features = CpuidIn {

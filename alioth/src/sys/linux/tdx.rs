@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::arch::tdx::TdAttr;
-use crate::sys::kvm::KvmCpuid2;
+use crate::sys::kvm::{KVM_MAX_CPUID_ENTRIES, KvmCpuid2};
 use crate::{bitflags, consts};
 
 consts! {
@@ -39,7 +39,7 @@ pub struct KvmTdxCmd {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct KvmTdxCapabilities<const N: usize> {
+pub struct KvmTdxCapabilities<const N: usize = KVM_MAX_CPUID_ENTRIES> {
     pub supported_attrs: TdAttr,
     pub supported_xfam: u64,
     pub kernel_tdvmcallinfo_1_r11: u64,
@@ -52,8 +52,8 @@ pub struct KvmTdxCapabilities<const N: usize> {
 
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct KvmTdxInitVm<const N: usize> {
-    pub attributes: u64,
+pub struct KvmTdxInitVm<const N: usize = KVM_MAX_CPUID_ENTRIES> {
+    pub attributes: TdAttr,
     pub xfam: u64,
     pub mrconfigid: [u8; 48],
     pub mrowner: [u8; 48],

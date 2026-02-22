@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::arch::x86_64::CpuidResult;
+
+use rstest::rstest;
+
+use crate::arch::cpuid::CpuidIn;
 use crate::hv::kvm::{Kvm, KvmConfig};
-use crate::sys::kvm::KVM_CPUID_SIGNATURE;
+use crate::sys::kvm::{KVM_CPUID_SIGNATURE, KvmCpuid2Flag, KvmCpuidEntry2};
 
 #[test]
 #[cfg_attr(not(feature = "test-hv"), ignore)]
@@ -31,4 +36,61 @@ fn test_get_supported_cpuid() {
         }
     }
     assert!(kvm_cpuid_exist);
+}
+
+#[rstest]
+#[case(
+    KvmCpuidEntry2 {
+        function: 0,
+        index: 0,
+        flags: KvmCpuid2Flag::empty(),
+        eax: 0x10,
+        ebx: u32::from_le_bytes(*b"Auth"),
+        ecx: u32::from_le_bytes(*b"cAMD"),
+        edx: u32::from_le_bytes(*b"enti"),
+        padding: [0; 3],
+    },
+    (
+        CpuidIn {
+            func: 0,
+            index: None,
+        },
+        CpuidResult {
+            eax: 0x10,
+            ebx: u32::from_le_bytes(*b"Auth"),
+            ecx: u32::from_le_bytes(*b"cAMD"),
+            edx: u32::from_le_bytes(*b"enti"),
+        }
+    )
+)]
+#[case(
+    KvmCpuidEntry2 {
+        function: 0xb,
+        index: 0,
+        flags: KvmCpuid2Flag::SIGNIFCANT_INDEX,
+        eax: 0x0,
+        ebx: 0x0,
+        ecx: 0x0,
+        edx: 0x6d,
+        padding: [0; 3],
+    },
+    (
+        CpuidIn {
+            func: 0xb,
+            index: Some(0),
+        },
+        CpuidResult {
+            eax: 0x0,
+            ebx: 0x0,
+            ecx: 0x0,
+            edx: 0x6d,
+        }
+    )
+)]
+fn test_convert_cpuid_entry(
+    #[case] value: KvmCpuidEntry2,
+    #[case] expected: (CpuidIn, CpuidResult),
+) {
+    let got: (CpuidIn, CpuidResult) = value.into();
+    assert_eq!(got, expected)
 }

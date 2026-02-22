@@ -18,7 +18,7 @@ use std::sync::atomic::Ordering;
 use crate::arch::layout::MEM_64_START;
 use crate::arch::tdx::TdAttr;
 use crate::board::{Board, Result, error};
-use crate::firmware::ovmf::tdx::{TdvfSectionType, create_hob, parse_entries};
+use crate::firmware::ovmf::tdx::{TdvfSectionAttr, TdvfSectionType, create_hob, parse_entries};
 use crate::hv::{Vcpu, Vm, VmMemory};
 use crate::mem::MarkPrivateMemory;
 use crate::mem::mapped::ArcMemPages;
@@ -74,7 +74,32 @@ where
 
         vcpu.tdx_init_vcpu(hob_phys)?;
 
-        todo!()
+        for entry in entries {
+            let tmp_mem;
+            let region = match entry.r#type {
+                TdvfSectionType::TD_HOB => hob_ram.as_slice(),
+                TdvfSectionType::TEMP_MEM => {
+                    tmp_mem = ArcMemPages::from_anonymous(entry.size as usize, None, None)?;
+                    tmp_mem.as_slice()
+                }
+                TdvfSectionType::BFV | TdvfSectionType::CFV => {
+                    let start = entry.data_offset as usize;
+                    let end = start + entry.size as usize;
+                    let Some(d) = data.get(start..end) else {
+                        return error::MissingPayload.fail();
+                    };
+                    d
+                }
+                t => {
+                    log::error!("Unknown entry type: {t:x?}");
+                    return error::UnknownFirmwareMetadata.fail();
+                }
+            };
+            let measure = entry.attributes.contains(TdvfSectionAttr::MR_EXTEND);
+            vcpu.tdx_init_mem_region(region, entry.address, measure)?;
+        }
+
+        Ok(())
     }
 
     pub(crate) fn tdx_init_ap(&self, vcpu: &mut V::Vcpu) -> Result<()> {

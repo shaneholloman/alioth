@@ -106,6 +106,8 @@ pub enum Error {
     MissingCpuid { leaf: CpuidIn },
     #[snafu(display("Firmware error"), context(false))]
     Firmware { source: Box<crate::firmware::Error> },
+    #[snafu(display("Unknown firmware metadata"))]
+    UnknownFirmwareMetadata,
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

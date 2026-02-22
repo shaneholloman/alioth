@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::mem::{offset_of, size_of, size_of_val};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, AtomicU64};
 
 use parking_lot::Mutex;
 use snafu::ResultExt;
@@ -53,6 +53,7 @@ where
 {
     cpuids: HashMap<CpuidIn, CpuidResult>,
     sev_ap_eip: AtomicU32,
+    tdx_hob: AtomicU64,
     pub(crate) io_apic: Arc<IoApic<V::MsiSender>>,
 }
 
@@ -167,6 +168,7 @@ impl<V: Vm> ArchBoard<V> {
         Ok(Self {
             cpuids,
             sev_ap_eip: AtomicU32::new(0),
+            tdx_hob: AtomicU64::new(0),
             io_apic: Arc::new(IoApic::new(vm.create_msi_sender()?)),
         })
     }
@@ -216,7 +218,7 @@ where
         match coco {
             Coco::AmdSev { policy } => self.setup_sev(fw, *policy),
             Coco::AmdSnp { .. } => self.setup_snp(fw),
-            Coco::IntelTdx { attr } => todo!("Intel TDX {attr:?}"),
+            Coco::IntelTdx { .. } => self.setup_tdx(fw),
         }
     }
 

@@ -40,6 +40,10 @@ pub enum Error {
     MissingTdvfVersion { got: u32 },
     #[snafu(display("Invalid firmware data layout"))]
     InvalidLayout,
+    #[snafu(display("Uncovered TDVF section"))]
+    UncoveredTdvfSection,
+    #[snafu(display("Failed to write HOB"))]
+    WriteHob { error: std::io::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

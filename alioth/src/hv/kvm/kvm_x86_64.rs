@@ -28,7 +28,7 @@ impl From<KvmCpuidEntry2> for (CpuidIn, CpuidResult) {
     fn from(value: KvmCpuidEntry2) -> Self {
         let in_ = CpuidIn {
             func: value.function,
-            index: if value.flags.contains(KvmCpuid2Flag::SIGNIFCANT_INDEX) || value.index > 0 {
+            index: if value.flags.contains(KvmCpuid2Flag::SIGNIFCANT_INDEX) {
                 Some(value.index)
             } else {
                 None

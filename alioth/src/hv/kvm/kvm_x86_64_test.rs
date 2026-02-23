@@ -42,7 +42,7 @@ fn test_get_supported_cpuid() {
 #[case(
     KvmCpuidEntry2 {
         function: 0,
-        index: 0,
+        index: 1,
         flags: KvmCpuid2Flag::empty(),
         eax: 0x10,
         ebx: u32::from_le_bytes(*b"Auth"),

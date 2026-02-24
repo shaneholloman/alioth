@@ -26,6 +26,7 @@ use snafu::Snafu;
 
 use crate::errors::{DebugTrace, trace_error};
 
+use self::ovmf::x86_64::sev::SEV_SIGNATURE;
 use self::ovmf::x86_64::tdx::{TDVF_SIGNATURE, TDVF_VERSION};
 
 #[trace_error]
@@ -36,6 +37,8 @@ pub enum Error {
     MissingMetadata { name: &'static str },
     #[snafu(display("Firmware missing TDVF signature {TDVF_SIGNATURE:08x}, got {got:08x}"))]
     MissingTdvfSignature { got: u32 },
+    #[snafu(display("Firmware missing AMD-SEV signature {SEV_SIGNATURE:08x}, got {got:08x}"))]
+    MissingAmdSevSignature { got: u32 },
     #[snafu(display("Firmware missing TDVF version {TDVF_VERSION}, got {got}"))]
     MissingTdvfVersion { got: u32 },
     #[snafu(display("Invalid firmware data layout"))]

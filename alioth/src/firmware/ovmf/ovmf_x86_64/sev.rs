@@ -25,6 +25,7 @@ pub const GUID_SEV_ES_RESET_BLOCK: [u8; GUID_SIZE] = [
 pub const GUID_SEV_METADATA: [u8; GUID_SIZE] = [
     0x66, 0x65, 0x88, 0xdc, 0x4a, 0x98, 0x98, 0x47, 0xA7, 0x5e, 0x55, 0x85, 0xa7, 0xbf, 0x67, 0xcc,
 ];
+pub const SEV_SIGNATURE: u32 = u32::from_le_bytes(*b"ASEV");
 
 #[derive(Debug, KnownLayout, Immutable, FromBytes, IntoBytes)]
 #[repr(C)]
@@ -101,6 +102,12 @@ pub fn parse_desc(data: &[u8]) -> Result<&[SevMetadataDesc]> {
     let offset = data.len() - offset_r as usize;
     let Ok((metadata, remain)) = SevMetaData::ref_from_prefix(&data[offset..]) else {
         return error::InvalidLayout.fail();
+    };
+    if metadata.signature != SEV_SIGNATURE {
+        return error::MissingAmdSevSignature {
+            got: metadata.signature,
+        }
+        .fail();
     };
     let Ok((entries, _)) =
         <[SevMetadataDesc]>::ref_from_prefix_with_elems(remain, metadata.num_desc as usize)

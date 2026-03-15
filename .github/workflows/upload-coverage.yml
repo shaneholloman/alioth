@@ -1,0 +1,85 @@
+name: Upload Coverage
+
+on:
+  workflow_run:
+    workflows: ["Rust"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  upload:
+    name: Upload Coverage
+    # Only run if the tests and coverage generation actually succeeded
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download coverage artifact
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: coverage-data
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Upload to Codecov
+        run: |
+          if [ ! -f codecov_payload.json ]; then
+            echo "No codecov_payload.json found in artifact!"
+            exit 1
+          fi
+
+          echo "Uploading coverage data to Cloudflare API..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ vars.CODECOV_URL }}/api/upload" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CODECOV_TOKEN }}" \
+            -d @codecov_payload.json)
+
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Failed to upload coverage. Status: $HTTP_STATUS"
+            echo "Response: $BODY"
+            exit 1
+          fi
+          echo "Upload successful: $BODY"
+
+      - name: Post PR Comment
+        run: |
+          if [ -f github_comment.json ] && [ -f pr_number ]; then
+            PR_NUM=$(cat pr_number)
+            echo "Posting coverage comment to PR #$PR_NUM..."
+
+            # Replace local placeholder URL with actual remote URL
+            sed -i "s#http://localhost:8787#${{ vars.CODECOV_URL }}#g" github_comment.json
+
+            # 1. Check for existing comment
+            EXISTING_COMMENT=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/${{ github.repository }}/issues/$PR_NUM/comments" \
+              | jq -r '.[] | select(.body != null and (.body | contains("<!-- codecov-worker-report -->"))) | .id' | head -n 1)
+
+            if [ -n "$EXISTING_COMMENT" ]; then
+              echo "Updating existing comment ID $EXISTING_COMMENT..."
+              curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Content-Type: application/json" \
+                -d @github_comment.json \
+                "https://api.github.com/repos/${{ github.repository }}/issues/comments/$EXISTING_COMMENT"
+            else
+              echo "Creating new comment..."
+              curl -s -o /dev/null -w "%{http_code}" -X POST \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                -H "Content-Type: application/json" \
+                -d @github_comment.json \
+                "https://api.github.com/repos/${{ github.repository }}/issues/$PR_NUM/comments"
+            fi
+          else
+            echo "Not a PR or no comment payload generated, skipping GitHub comment."
+          fi

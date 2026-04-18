@@ -58,7 +58,8 @@ bitflags! {
 }
 
 bitflags! {
-    pub struct Cr0(u32) {
+    #[derive(Default)]
+    pub struct Cr0(u64) {
         /// CarryProtected Mode Enable
         PE = 1 << 0;
         /// CarryMonitor co-processor
@@ -85,6 +86,7 @@ bitflags! {
 }
 
 bitflags! {
+    #[derive(Default)]
     pub struct Cr3(u64) {
         /// CarryPage-level write-through
         PWT = 1 << 3;
@@ -94,7 +96,8 @@ bitflags! {
 }
 
 bitflags! {
-    pub struct Cr4(u32) {
+    #[derive(Default)]
+    pub struct Cr4(u64) {
         /// CarryVirtual 8086 Mode Extensions
         VME = 1 << 0;
         /// CarryProtected-mode Virtual Interrupts
@@ -195,8 +198,6 @@ pub enum SReg {
     Cr3,
     Cr4,
     Cr8,
-    Efer,
-    ApicBase,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

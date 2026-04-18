@@ -22,7 +22,8 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use snafu::ResultExt;
 
 use crate::arch::cpuid::CpuidIn;
-use crate::arch::reg::{DtReg, DtRegVal, Reg, SReg, SegAccess, SegReg, SegRegVal};
+use crate::arch::msr::{Efer, Msr};
+use crate::arch::reg::{Cr0, Cr3, Cr4, DtReg, DtRegVal, Reg, SReg, SegAccess, SegReg, SegRegVal};
 use crate::hv::kvm::kvm_error;
 use crate::hv::kvm::vcpu::KvmVcpu;
 use crate::hv::kvm::vm::KvmVm;
@@ -47,13 +48,11 @@ impl VcpuArch {
 macro_rules! set_kvm_sreg {
     ($kvm_sregs:ident, $sreg:ident, $val:expr) => {
         match $sreg {
-            SReg::Cr0 => $kvm_sregs.cr0 = $val,
+            SReg::Cr0 => $kvm_sregs.cr0 = Cr0::from_bits_retain($val),
             SReg::Cr2 => $kvm_sregs.cr2 = $val,
-            SReg::Cr3 => $kvm_sregs.cr3 = $val,
-            SReg::Cr4 => $kvm_sregs.cr4 = $val,
+            SReg::Cr3 => $kvm_sregs.cr3 = Cr3::from_bits_retain($val),
+            SReg::Cr4 => $kvm_sregs.cr4 = Cr4::from_bits_retain($val),
             SReg::Cr8 => $kvm_sregs.cr8 = $val,
-            SReg::Efer => $kvm_sregs.efer = $val,
-            SReg::ApicBase => $kvm_sregs.apic_base = $val,
         }
     };
 }
@@ -99,13 +98,21 @@ macro_rules! set_kvm_seg_reg {
 macro_rules! get_kvm_sreg {
     ($kvm_sregs:ident, $sreg:ident) => {
         match $sreg {
-            SReg::Cr0 => $kvm_sregs.cr0,
+            SReg::Cr0 => $kvm_sregs.cr0.bits(),
             SReg::Cr2 => $kvm_sregs.cr2,
-            SReg::Cr3 => $kvm_sregs.cr3,
-            SReg::Cr4 => $kvm_sregs.cr4,
+            SReg::Cr3 => $kvm_sregs.cr3.bits(),
+            SReg::Cr4 => $kvm_sregs.cr4.bits(),
             SReg::Cr8 => $kvm_sregs.cr8,
-            SReg::Efer => $kvm_sregs.efer,
-            SReg::ApicBase => $kvm_sregs.apic_base,
+        }
+    };
+}
+
+macro_rules! fix_kvm_efer {
+    ($kvm_sregs:ident) => {
+        if $kvm_sregs.cr0.contains(Cr0::PG) && $kvm_sregs.cr4.contains(Cr4::PAE) {
+            $kvm_sregs.efer |= Efer::LME | Efer::LMA;
+        } else {
+            $kvm_sregs.efer &= !(Efer::LME | Efer::LMA);
         }
     };
 }
@@ -243,6 +250,7 @@ impl KvmVcpu {
         for (reg, val) in seg_regs {
             set_kvm_seg_reg!(kvm_sregs2, reg, val);
         }
+        fix_kvm_efer!(kvm_sregs2);
         unsafe { kvm_set_sregs2(&self.fd, &kvm_sregs2) }.context(error::VcpuReg)?;
         Ok(())
     }
@@ -281,6 +289,7 @@ impl KvmVcpu {
         for (reg, val) in seg_regs {
             set_kvm_seg_reg!(kvm_sregs, reg, val);
         }
+        fix_kvm_efer!(kvm_sregs);
         unsafe { kvm_set_sregs(&self.fd, &kvm_sregs) }.context(error::VcpuReg)?;
         Ok(())
     }
@@ -329,14 +338,14 @@ impl KvmVcpu {
         Ok(())
     }
 
-    pub fn kvm_set_msrs(&mut self, msrs: &[(u32, u64)]) -> Result<()> {
+    pub fn kvm_set_msrs(&mut self, msrs: &[(Msr, u64)]) -> Result<()> {
         let mut kvm_msrs = KvmMsrs {
             nmsrs: msrs.len() as u32,
             _pad: 0,
             entries: [KvmMsrEntry::default(); MAX_IO_MSRS],
         };
         for (i, (index, data)) in msrs.iter().enumerate() {
-            kvm_msrs.entries[i].index = *index;
+            kvm_msrs.entries[i].index = index.raw();
             kvm_msrs.entries[i].data = *data;
         }
         unsafe { kvm_set_msrs(&self.fd, &kvm_msrs) }.context(error::GuestMsr)?;
